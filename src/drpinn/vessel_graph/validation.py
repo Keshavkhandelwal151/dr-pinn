@@ -5,7 +5,7 @@ one set splits or merges segments differently."""
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -29,6 +29,8 @@ class CentrelineComparison:
     radius_rel_error: NDArray[np.float64]  # per matched test segment: r_test / r_ref - 1
     matched: int
     unmatched: int
+    radius_test: NDArray[np.float64] = field(default_factory=lambda: np.zeros(0))  # matched pairs, test side
+    radius_ref: NDArray[np.float64] = field(default_factory=lambda: np.zeros(0))   # matched pairs, reference side
 
     @property
     def radius_median_abs_error(self) -> float:
@@ -57,7 +59,7 @@ def compare_centrelines(test_paths: Sequence[ArrayLike], test_radii: ArrayLike,
     test_radii = np.asarray(test_radii, float)
     ref_radii = np.asarray(ref_radii, float)
     use = np.ones(len(t_dense), bool) if mask is None else np.asarray(mask, bool)
-    errs, unmatched = [], 0
+    errs, unmatched, pairs = [], 0, []
     for i, pts in enumerate(t_dense):
         if not use[i]:
             continue
@@ -73,4 +75,6 @@ def compare_centrelines(test_paths: Sequence[ArrayLike], test_radii: ArrayLike,
             unmatched += 1
             continue
         errs.append(test_radii[i] / ref_radii[best] - 1.0)
-    return CentrelineComparison(recall, precision, np.array(errs), len(errs), unmatched)
+        pairs.append((test_radii[i], ref_radii[best]))
+    pr = np.array(pairs, float).reshape(-1, 2)
+    return CentrelineComparison(recall, precision, np.array(errs), len(errs), unmatched, pr[:, 0], pr[:, 1])

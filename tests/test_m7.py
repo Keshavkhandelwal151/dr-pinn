@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from drpinn.datasets.synthetic import fake_fundus_av
-from drpinn.regional.patches import EyeGeometry, estimate_fovea, patch_table, segment_patches
+from drpinn.regional.patches import estimate_fovea, segment_patches
 from drpinn.regional.pipeline import M7Config, analyse_eye, disc_from_mask
 from drpinn.regional.stats import Logistic, average_precision, evaluate_score, paired_difference, per_image_auroc, t_interval
 from drpinn.segmentation.av import av_graphs

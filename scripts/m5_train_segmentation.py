@@ -32,26 +32,32 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import torch  # noqa: E402
 
 from drpinn.datasets.splits import drive_fold  # noqa: E402
-from drpinn.segmentation.av import av_graphs, masks_from_probabilities  # noqa: E402
+from drpinn.evaluation import r2_score  # noqa: E402
+from drpinn.segmentation.av import av_graphs, av_label_map, masks_from_probabilities  # noqa: E402
 from drpinn.segmentation.data import load_drive_rite  # noqa: E402
 from drpinn.segmentation.infer import predict_image  # noqa: E402
-from drpinn.segmentation.metrics import av_metrics, segmentation_metrics  # noqa: E402
-from drpinn.segmentation.train import TrainConfig, load_checkpoint, train, write_json  # noqa: E402
+from drpinn.segmentation.metrics import av_label_metrics, av_metrics, segmentation_metrics  # noqa: E402
+from drpinn.segmentation.train import TrainConfig, train, write_json  # noqa: E402
 from drpinn.segmentation.unet import UNetConfig, count_parameters  # noqa: E402
 from drpinn.vessel_graph import compare_centrelines, extract_vessel_graph  # noqa: E402
 
 PRESETS = {
     "full": TrainConfig(iterations=4000, batch=16, patch=96, save_every=1000, unet=UNetConfig(base=32, depth=4)),
+    # Artery/vein needs wider context than vessel detection (a vessel is told apart by following it,
+    # by its width and colour relative to its neighbours): bigger patches, longer training, balanced A/V loss.
+    "av": TrainConfig(iterations=10000, batch=12, patch=192, save_every=1000, vessel_fraction=0.7,
+                      av_loss_weight=2.0, av_balance=True, unet=UNetConfig(base=32, depth=4)),
     "quick": TrainConfig(iterations=400, batch=16, patch=96, unet=UNetConfig(base=16, depth=4)),
     "tiny": TrainConfig(iterations=300, batch=8, patch=64, save_every=100,
                         unet=UNetConfig(base=8, depth=3, dropout=0.0)),
 }
-TILE = {"full": 256, "quick": 256, "tiny": 128}
+TILE = {"av": 384, "full": 256, "quick": 256, "tiny": 128}
 
 
 def evaluate(model, sample, device, tile, use_av, out_dir: Path, tag: str, overlay: bool) -> dict:
     prob = predict_image(model, sample.image, sample.fov, tile=tile, device=device)
     row = {"image_id": sample.image_id, "reference": sample.vessel_source, **segmentation_metrics(prob[0], sample.vessel, sample.fov)}
+    row["f1"] = row["dice"]
     pred = (prob[0] >= 0.5) & sample.fov
     try:
         ref_g = extract_vessel_graph(sample.vessel, fov=sample.fov)
@@ -59,12 +65,15 @@ def evaluate(model, sample, device, tile, use_av, out_dir: Path, tag: str, overl
         c = compare_centrelines(pred_g.paths_rc, pred_g.radius_px, ref_g.paths_rc, ref_g.radius_px,
                                 mask=pred_g.radius_reliable)
         row.update({"centreline_recall": c.recall, "centreline_precision": c.precision,
-                    "radius_median_abs_error": c.radius_median_abs_error,
+                    "radius_median_abs_error": c.radius_median_abs_error, "radius_r2": r2_score(c.radius_ref, c.radius_test),
                     "segments_pred": pred_g.n_edges, "segments_ref": ref_g.n_edges})
     except ValueError as exc:  # e.g. an empty prediction
         row["graph_error"] = str(exc)
     if use_av and sample.has_av:
         row.update(av_metrics(prob[1], prob[2], sample.av_labels, sample.vessel))
+        for method in ("threshold", "vote"):  # how the A/V maps are turned into the two trees
+            lab = av_label_map(prob, method=method, vessel=(prob[0] >= 0.5) & sample.fov)
+            row.update(av_label_metrics(lab, sample.av_labels, sample.vessel, prefix=f"av_{method}"))
     if use_av:
         v, a, w = masks_from_probabilities(prob)
         try:
@@ -225,7 +234,7 @@ def main() -> None:
         if s:
             line = "  ".join(f"{k} {s[k]['mean']:.3f}±{s[k]['sd']:.3f}" for k in
                              ("dice", "auc", "sensitivity", "specificity", "centreline_recall",
-                              "radius_median_abs_error", "av_accuracy") if k in s)
+                              "radius_median_abs_error", "av_accuracy", "av_vote_accuracy") if k in s)
             print(f"{part.upper():5s} (n={s['dice']['n']}): {line}")
 
 

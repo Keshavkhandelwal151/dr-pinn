@@ -27,9 +27,15 @@ class M7Config:
     patch_px: int = 32             # ~1/17 of the field of view
     threshold: float = 0.5
     mc: MCConfig = field(default_factory=MCConfig)
+    # how artery/vein maps become the two trees (segmentation.av.av_label_map). "threshold" is the
+    # pre-registered rule; "vote" (one decision per vessel segment) is the M12 fix for patchy A/V labels.
+    av_method: str = "threshold"
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        if self.av_method == "threshold":  # unchanged settings for runs made before av_method existed
+            d.pop("av_method")
+        return d
 
 
 def disc_from_mask(od_mask: NDArray[np.bool_]) -> tuple[tuple[float, float], float]:
@@ -61,7 +67,7 @@ def analyse_eye(image_id: str, prob: NDArray, fov: NDArray[np.bool_], od_mask: N
     fov = np.asarray(fov, bool)
     disc_rc, disc_px = disc_from_mask(od_mask)
     eye = EyeGeometry(disc_rc, disc_px, estimate_fovea(disc_rc, disc_px, fov), True)
-    vessel, artery, vein = masks_from_probabilities(prob, cfg.threshold)
+    vessel, artery, vein = masks_from_probabilities(prob, cfg.threshold, cfg.av_method)
     vessel &= fov
     graphs = av_graphs(vessel, artery & fov, vein & fov, fov=fov, vessel_prob=prob[0])
     trees, geometry, info = {}, {}, {"image_id": image_id, "disc_diameter_px": disc_px}
