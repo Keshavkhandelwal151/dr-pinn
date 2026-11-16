@@ -30,15 +30,23 @@ class TrainConfig:
     save_every: int = 250
     seed: int = 0
     unet: UNetConfig = field(default_factory=UNetConfig)
+    av_balance: bool = False  # weight artery and vein pixels equally (arteries are thinner, so fewer pixels)
 
     def to_dict(self) -> dict:
         d = asdict(self)
         d["unet"] = self.unet.to_dict()
+        if not self.av_balance:  # keep the settings of older checkpoints identical, so they still resume
+            d.pop("av_balance")
         return d
 
 
-def loss_fn(logits: torch.Tensor, y: torch.Tensor, w: torch.Tensor, av_weight: float = 1.0) -> torch.Tensor:
-    """Vessel: weighted BCE + soft Dice inside the FOV. Artery/vein: BCE on labelled vessel pixels."""
+def loss_fn(logits: torch.Tensor, y: torch.Tensor, w: torch.Tensor, av_weight: float = 1.0,
+            av_balance: bool = False) -> torch.Tensor:
+    """Vessel: weighted BCE + soft Dice inside the FOV. Artery/vein: BCE on labelled vessel pixels.
+
+    With `av_balance`, artery-only and vein-only pixels each carry half of the
+    A/V loss, so the larger vein area does not pull every doubtful pixel to vein.
+    """
     bce = F.binary_cross_entropy_with_logits(logits, y, reduction="none")
     v_w = w[:, 0]
     vessel_bce = (bce[:, 0] * v_w).sum() / v_w.sum().clamp_min(1.0)
@@ -48,6 +56,15 @@ def loss_fn(logits: torch.Tensor, y: torch.Tensor, w: torch.Tensor, av_weight: f
     loss = vessel_bce + dice
     av_w = w[:, 1:]
     if av_w.sum() > 0:
+        if av_balance:
+            art = (y[:, 1] > 0.5) & (y[:, 2] < 0.5)
+            vein = (y[:, 2] > 0.5) & (y[:, 1] < 0.5)
+            n_a, n_v = (art.float() * w[:, 1]).sum(), (vein.float() * w[:, 1]).sum()
+            scale = torch.ones_like(w[:, 1])
+            if n_a > 0 and n_v > 0:
+                scale = torch.where(art, 0.5 * (n_a + n_v) / n_a, scale)
+                scale = torch.where(vein, 0.5 * (n_a + n_v) / n_v, scale)
+            av_w = av_w * scale.unsqueeze(1)
         loss = loss + av_weight * (bce[:, 1:] * av_w).sum() / av_w.sum()
     return loss
 
@@ -122,7 +139,7 @@ def train(samples: list[SegSample], config: TrainConfig, ckpt_path: str | Path, 
         x, y, w = (torch.from_numpy(a).to(device) for a in sampler.batch(config.batch))
         with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=use_amp):
             logits = model(x)
-        loss = loss_fn(logits.float(), y, w, config.av_loss_weight)
+        loss = loss_fn(logits.float(), y, w, config.av_loss_weight, config.av_balance)
         opt.zero_grad(set_to_none=True)
         scaler.scale(loss).backward()
         scaler.step(opt)

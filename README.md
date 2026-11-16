@@ -51,6 +51,9 @@ python scripts/m6_triage.py --synthetic --preset tiny        # software check, n
 python scripts/m9_serve.py --project .                      # API + dashboard at http://127.0.0.1:8000
 python scripts/m9_check_disc.py --idrid-dir data/IDRiD      # how often the disc estimate hits the expert disc
 python scripts/m11_collect_results.py --project .           # every result in one summary (reports/summary/)
+python scripts/m12_evaluate.py --probs-dir reports/m5_full/probs/test --predictions reports/m6_full/m6_predictions.csv   # accuracy, precision, recall, F1, R², heat maps (CPU, no PyTorch)
+python scripts/m12_evaluate.py --synthetic /tmp/fake_m12    # software check of the evaluation
+python scripts/m5_train_segmentation.py --preset av --out reports/m5_av --ckpt-dir checkpoints/m5_av   # A/V-focused U-Net (GPU)
 python scripts/demo_synthetic.py          # synthetic stenosis + blood-pressure sweep demo
 python scripts/benchmark_solver.py        # latency on YOUR machine -> reports/benchmarks/solver_latency.json
 ```
@@ -74,6 +77,7 @@ python scripts/benchmark_solver.py        # latency on YOUR machine -> reports/b
 - `uncertainty/montecarlo.py`, `regional/` — Monte Carlo WSS risk per segment, patch aggregation, image-clustered statistics, M7 pipeline. Pre-registered plan: [`docs/m7_analysis_plan.md`](docs/m7_analysis_plan.md).
 - `triage/` — image quality checks, MobileNetV3 grading, temperature scaling, referral threshold, uncertainty, Grad-CAM, triage card. Plan and method: [`docs/m6_triage.md`](docs/m6_triage.md).
 - `api/` — analysis service, FastAPI app, optic-disc estimate, and the dashboard page (`api/static/index.html`). See [`docs/api.md`](docs/api.md).
+- `evaluation.py`, `scripts/m12_evaluate.py` — accuracy, precision, recall, F1, R² (radius, expected grade), confusion heat maps, per-photo heat map, spatial error maps. `segmentation/av.py` `av_label_map(method="vote")` — one artery/vein decision per vessel segment, crossings kept in both trees.
 - Thesis structure, claims to avoid and the consolidated limitations: [`docs/thesis_outline.md`](docs/thesis_outline.md).
 - Method notes: [`docs/hemodynamics_solver.md`](docs/hemodynamics_solver.md).
 

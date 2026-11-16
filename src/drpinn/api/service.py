@@ -46,6 +46,7 @@ class ServiceConfig:
     device: str | None = None
     mc_samples: int = 50
     max_upload_mb: float = 25.0
+    av_method: str = "vote"  # artery/vein per vessel segment (M12); "threshold" reproduces M7 exactly
 
     @property
     def triage_ckpt(self) -> Path:
@@ -278,8 +279,9 @@ class Analyser:
     def _vessels_and_shear(self, rgb_w, fov_w, prob, disc_rc, disc_d, scale, mc_samples, images):
         from ..segmentation.av import masks_from_probabilities
 
-        cfg = M7Config(mc=MCConfig(n_samples=int(mc_samples), radius_sigma=self.radius_sigma))
-        vessel, artery, vein = masks_from_probabilities(prob, cfg.threshold)
+        cfg = M7Config(mc=MCConfig(n_samples=int(mc_samples), radius_sigma=self.radius_sigma),
+                       av_method=self.cfg.av_method)
+        vessel, artery, vein = masks_from_probabilities(prob, cfg.threshold, cfg.av_method)
         vessels = {"available": True, "working_scale": {"fov_px": WORK_FOV_PX, "scale": scale},
                    "vessel_fraction_of_fov": float(vessel[fov_w].mean()),
                    "artery_vein": self.status["vessels"].get("artery_vein", True)}

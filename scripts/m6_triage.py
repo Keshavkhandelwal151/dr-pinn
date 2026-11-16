@@ -39,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import torch  # noqa: E402
 
 from drpinn import DISCLAIMER, __version__  # noqa: E402
-from drpinn.datasets.records import DR_GRADE_NAMES, REFERABLE_MIN_GRADE  # noqa: E402
+from drpinn.datasets.records import REFERABLE_MIN_GRADE  # noqa: E402
 from drpinn.segmentation.metrics import roc_auc  # noqa: E402
 from drpinn.triage.data import build_cache, load_cached, synthetic_graded_eye, synthetic_grades, to_input  # noqa: E402
 from drpinn.triage.metrics import (  # noqa: E402

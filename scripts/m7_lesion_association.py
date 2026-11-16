@@ -306,7 +306,7 @@ def plot_example(image_id, rgb, fov, od, lesions, prob, cfg: M7Config, path: Pat
     from drpinn.regional.pipeline import disc_from_mask
 
     disc_rc, disc_px = disc_from_mask(od)
-    v, a, w = masks_from_probabilities(prob, cfg.threshold)
+    v, a, w = masks_from_probabilities(prob, cfg.threshold, cfg.av_method)
     g = av_graphs(v & fov, a & fov, w & fov, fov=fov, vessel_prob=prob[0])
     fig, axes = plt.subplots(1, 2, figsize=(13, 5.4))
     axes[0].imshow(rgb)
@@ -351,8 +351,10 @@ def main() -> None:
     ap.add_argument("--scenario", choices=["null", "planted"], default="null")
     ap.add_argument("--n-synthetic", type=int, default=24)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--av-method", choices=["threshold", "argmax", "vote"], default="threshold",
+                    help="artery/vein assignment; 'threshold' = pre-registered rule, 'vote' = segment vote (M12)")
     a = ap.parse_args()
-    cfg = M7Config(mc=MCConfig(n_samples=a.samples, radius_sigma=a.radius_sigma, seed=a.seed))
+    cfg = M7Config(mc=MCConfig(n_samples=a.samples, radius_sigma=a.radius_sigma, seed=a.seed), av_method=a.av_method)
     s = run(Path(a.out), Path(a.idrid_dir), Path(a.model), a.synthetic, a.scenario, n_synthetic=a.n_synthetic,
             cfg=cfg, n_boot=a.bootstrap, seed=a.seed, max_images=a.max_images)
     p = s["primary"]
